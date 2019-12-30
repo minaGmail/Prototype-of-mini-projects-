@@ -27,6 +27,9 @@ class repoCell: UITableViewCell {
         super.layoutSubviews()
         containerView.layer.cornerRadius = containerView.frame.height*0.1
         containerView.clipsToBounds = true
+        repoDescription.backgroundColor = UIColor.clear
+        repoOwner.backgroundColor = UIColor.clear
+        repoName.backgroundColor = UIColor.clear
     }
 
     override func setSelected(_ selected: Bool, animated: Bool) {

@@ -10,14 +10,15 @@ import UIKit
 import Alamofire
 import Kingfisher
 
-class ViewController: UIViewController {
+class ViewController: UIViewController ,UISearchBarDelegate{
     
     var repoArray = [WelcomeElement]()
     var isLoading:Bool = false
     var currentPage = 1
     var lastPage = 1
     var selectedIndex:Int!
-    
+    var filteredArray = [WelcomeElement]()
+    var isChanging = false
     private lazy var searchBar:UISearchBar = {
          let searchBar = UISearchBar()
           searchBar.translatesAutoresizingMaskIntoConstraints = false
@@ -25,12 +26,15 @@ class ViewController: UIViewController {
           searchBar.isTranslucent = true
           searchBar.barStyle = .default
           searchBar.placeholder = "Type here"
+          searchBar.delegate = self
           return searchBar
       }()
       
       private lazy var repo:UITableView = {
-         let tableView = UITableView()
-          tableView.translatesAutoresizingMaskIntoConstraints = false
+        let tableView = UITableView()
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.separatorStyle = .none
+        tableView.backgroundColor = .clear
         return tableView
       }()
     
@@ -41,13 +45,25 @@ class ViewController: UIViewController {
         view.isHidden = true
         return view
     }()
+    private lazy var closeButton:UIButton = {
+       let button = UIButton()
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(didClose), for: .touchUpInside)
+        button.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+        button.tintColor = .white
+        return button
+    }()
+    
     
     private lazy var dialogText:UILabel = {
        let label = UILabel()
         label.text = "Do you want to go to repository or owner url"
         label.translatesAutoresizingMaskIntoConstraints = false
         label.textColor = .white
-        
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.5
+        label.numberOfLines = 0
+        label.textAlignment = .center
         return label
     }()
     
@@ -91,8 +107,11 @@ class ViewController: UIViewController {
     }
     
     @objc func repoOnwerPressed(sender:UIButton){
-        
-        if let url = URL(string:  Api.ownerArray[selectedIndex].htmlURL) {
+        let buttonPosition = sender.convert(CGPoint.zero, to: self.repo)
+        let indexPath = self.repo.indexPathForRow(at:buttonPosition)
+        guard let index = indexPath?.item else {return}
+        guard let htmlUrl = Api.ownerArray[index].htmlURL else{return}
+        if let url = URL(string: htmlUrl ) {
             if UIApplication.shared.canOpenURL(url) {
                 UIApplication.shared.open(url, options: [:])
             }
@@ -100,20 +119,30 @@ class ViewController: UIViewController {
     }
     
     @objc func repoPressed(sender:UIButton){
-        if let url = URL(string:repoArray[selectedIndex].htmlURL) {
+        let buttonPosition = sender.convert(CGPoint.zero, to: self.repo)
+        let indexPath = self.repo.indexPathForRow(at:buttonPosition)
+        guard let index = indexPath?.item else {return}
+        guard let htmlUrl = repoArray[index].htmlURL else{return}
+        if let url = URL(string:htmlUrl) {
             if UIApplication.shared.canOpenURL(url) {
                 UIApplication.shared.open(url, options: [:])
             }
         }
     }
     
+    @objc func didClose(sender:UIButton){
+        dialog.isHidden = true
+    }
+    
     func layoutUI(){
+        view.backgroundColor = .lightGray
         view.addSubview(searchBar)
         view.addSubview(repo)
         view.addSubview(dialog)
         dialog.addSubview(dialogText)
         dialog.addSubview(repoOwnerButtton)
         dialog.addSubview(repoButton)
+        dialog.addSubview(closeButton)
     }
     
     func constraintsSetup(){
@@ -140,15 +169,15 @@ class ViewController: UIViewController {
         
         NSLayoutConstraint.activate([
             dialogText.topAnchor.constraint(equalTo: dialog.topAnchor),
-            dialogText.widthAnchor.constraint(equalTo: dialog.widthAnchor, multiplier: 0.75),
+            dialogText.widthAnchor.constraint(equalTo: dialog.widthAnchor, multiplier: 0.95),
             dialogText.centerXAnchor.constraint(equalTo: dialog.centerXAnchor),
-            dialogText.heightAnchor.constraint(equalTo: dialog.heightAnchor, multiplier: 0.5)
+            dialogText.heightAnchor.constraint(equalTo: dialog.heightAnchor, multiplier: 0.6)
         ])
         
         NSLayoutConstraint.activate([
             repoOwnerButtton.bottomAnchor.constraint(equalTo: dialog.bottomAnchor, constant: -20),
             repoOwnerButtton.trailingAnchor.constraint(equalTo: dialog.trailingAnchor, constant: -25),
-            repoOwnerButtton.widthAnchor.constraint(equalToConstant: 100),
+            repoOwnerButtton.widthAnchor.constraint(equalToConstant: 120),
             repoOwnerButtton.heightAnchor.constraint(equalToConstant: 40)
         
         ])
@@ -156,10 +185,16 @@ class ViewController: UIViewController {
         NSLayoutConstraint.activate([
                    repoButton.bottomAnchor.constraint(equalTo: dialog.bottomAnchor, constant: -20),
                    repoButton.leadingAnchor.constraint(equalTo: dialog.leadingAnchor, constant: 25),
-                   repoButton.widthAnchor.constraint(equalToConstant: 100),
+                   repoButton.widthAnchor.constraint(equalToConstant: 120),
                    repoButton.heightAnchor.constraint(equalToConstant: 40)
                
                ])
+        NSLayoutConstraint.activate([
+            closeButton.topAnchor.constraint(equalTo: dialog.topAnchor, constant: 10),
+            closeButton.trailingAnchor.constraint(equalTo: dialog.trailingAnchor, constant: -10),
+            closeButton.widthAnchor.constraint(equalToConstant: 35),
+            closeButton.heightAnchor.constraint(equalToConstant: 35)
+        ])
     }
     
     func refreshHadler(){
@@ -172,7 +207,7 @@ class ViewController: UIViewController {
         guard !isLoading else{return}
         isLoading = true
         repo.refreshControl?.endRefreshing()
-       networkRequest()
+        networkRequest()
         // clear cache
     }
     
@@ -190,67 +225,90 @@ class ViewController: UIViewController {
         }
     }
     
+    func filter(searchText:String){
+        let nameFilter = repoArray.map({$0.name})
+        filteredArray = repoArray.filter({$0.name.contains(searchText)})
+        print(filteredArray)
+        print(nameFilter)
+        let array = [2,1,3,4,5,6]
+        let sortedArray = array.sorted(by: {$0 < $1})
+        print(sortedArray)
+        print(filteredArray as Any)
+    }
+    
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        guard let text = searchBar.text else {
+            return
+        }
+        filter(searchText: text)
+        isChanging = true
+        repo.reloadData()
+
+    }
+    
      func networkRequest(){
-        Api.parsers(page: 1) { (error, task,lastPage) in
+        Api.parsers(page: 1) { (error, repoArray) in
             self.isLoading = false
-              if let task = task{
+              if let task = repoArray{
               self.repoArray = task
               self.repo.reloadData()
                 self.currentPage = 1
-                self.lastPage = lastPage
+                //self.isChanging = false
               }
           }
       }
     
     func loadMore(){
-        guard !isLoading else{return}
-        guard currentPage < lastPage else{return}
-        Api.parsers(page:currentPage+1) { (error, task,lastPage:Int)  in
+        Api.parsers(page:currentPage+1) { (error, repoArray)  in
           self.isLoading = false
-            if let task = task{
+            if let task = repoArray{
                 self.repoArray.append(contentsOf: task)
+                self.repo.reloadData()
                 self.currentPage += 1
-                self.lastPage = lastPage
             }
         }
-        DispatchQueue.main.async {
-             self.repo.reloadData()
-        }
-       
-    }
-      
+       }
     
 }
 
 extension ViewController:UITableViewDataSource{
     
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return repoArray.count
+        if isChanging == false{
+            return repoArray.count
+
+        }else{
+            return filteredArray.count
+        }
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "repoCell") as! repoCell
-        if repoArray[indexPath.item].fork == false{
+        if repoArray[indexPath.row].fork == false{
             cell.containerView.backgroundColor = .green
             print("okey")
         }else{
              cell.containerView.backgroundColor = .white
             print("no")
         }
-        cell.repoName.text = repoArray[indexPath.row].name
-        cell.repoOwner.text = repoArray[indexPath.item].fullName
-        cell.repoDescription.text = repoArray[indexPath.item].welcomeDescription
-        let owner = Api.ownerArray[indexPath.item].avatarURL
-        if let imageUrl = owner , let avatarImageUrl = URL(string: imageUrl){
-        cell.avatarImage.kf.setImage(with: avatarImageUrl)
+        if isChanging == false {
+            cell.repoName.text = repoArray[indexPath.row].name
+            cell.repoOwner.text = repoArray[indexPath.item].fullName
+            cell.repoDescription.text = repoArray[indexPath.item].welcomeDescription
+            let owner = Api.ownerArray[indexPath.item].avatarURL
+            if let imageUrl = owner , let avatarImageUrl = URL(string: imageUrl){
+                cell.avatarImage.kf.setImage(with: avatarImageUrl)
+            }
+            repoOwnerButtton.tag = indexPath.item
+            repoButton.tag = indexPath.item
+        }else{
+            cell.repoName.text = filteredArray[indexPath.row].name
         }
-        repoOwnerButtton.tag = indexPath.item
-        repoButton.tag = indexPath.item
         return cell
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 150
+        return 175
     }
 }
 
@@ -260,14 +318,12 @@ extension ViewController:UITableViewDelegate{
         print("cell \(indexPath.item) selected")
         dialog.isHidden = false
         selectedIndex = indexPath.item
-        
     }
     
     func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
         let task = repoArray.count
-        if indexPath.item == task - 1{
+        if indexPath.row == task - 1{
             print("func called")
-            currentPage += 1
             loadMore()
         }
     }
